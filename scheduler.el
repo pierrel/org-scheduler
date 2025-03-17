@@ -1,10 +1,25 @@
 (require 'dash)
 
-(defvar scheduler-daily-capacity 3
+(defvar scheduler-weekly-capacity 2
   "The number of tasks that can be taken on in one day.")
-(defvar scheduler-day-availability '(1 2 3 4 5)
-  "The days of the week that can be scheduled. Corresponds to the indices
-of days used by 'calendar'")
+(defvar scheduler-days-of-week-available '(1 2 3 4 5)
+  "The integer-representation of the day of the week that can be scheduled")
+
+(defun scheduler-new-schedule ()
+  "Assigns a date to each todo according to the capacity and daily
+availability.
+
+For items that already have a schedule, honor that schedule.
+For items that has a deadline, schedule for 2 weeks before or today."
+  (let ((date-tasks (make-hash-table :test 'equal))
+	(all-tasks (scheduler-all-tasks-ordered))
+	(dates-to-fill (scheduler-date-sequence (current-time)
+						scheduler-daily-capacity)))))
+
+(defun scheduler-all-tasks-ordered ()
+  (->> (scheduler-org-tasks 'scheduler-org-is-todo)
+       (-remove 'seq-empty-p)
+       (apply 'scheduler-interleave)))
 
 (defun scheduler-org-is-todo ()
   "Returns true when the current element is a TODO item is TODO state"
@@ -54,22 +69,6 @@ found an nil when all siblings have been exhausted without a match."
 		   "+LEVEL=1"
 		   'agenda))
 
-(defun scheduler-interleave-lists (lists)
-  "Interleave LISTS of lists into a single list by taking elements cyclically from each sublist.
-Handles lists of different lengths."
-  (let ((results '())
-        (all-empty nil))
-    (while (not all-empty)
-      (setq all-empty t)
-      (setq lists (cl-remove-if-not #'identity
-                                    (mapcar (lambda (lst)
-                                              (when lst
-                                                (setq results (append results (list (car lst))))
-                                                (cdr lst)))
-                                            lists)))
-      (setq all-empty (null lists)))
-    results))
-
 (defun scheduler-org-timestamp (date)
   (format-time-string "<%Y-%m-%d>" date))
 
@@ -83,8 +82,21 @@ Handles lists of different lengths."
   "Returns a list of time objects starting at start-time, repeating each
 `repeat` times before incrementing by 1 day and stopping once reaching
 `size`"
+  (let* ((even-len (/ size repeat))
+	 (nums (number-sequence 0 (1- even-len)))
+	 (leftover (- size (* repeat even-len)))
+	 (makeup (make-list leftover (+ 1 (car (last nums)))))
+	 (even-list (->> nums
+			 (-map (apply-partially #'make-list
+						repeat))
+			 (apply #'append))))
+    (->> (append even-list makeup)
+	 (-map #'days-to-time)
+	 (-map (apply-partially #'time-add start-time)))))
+
+(defun saved-date-sequence (start-time repeat size)
   (let* ((nums (number-sequence 0
-			       (1- (/ size repeat))))
+				(1- (/ size repeat))))
 	 (nums-repeated (apply #'append
 			       (mapcar (lambda (n)
 					 (make-list repeat n))
@@ -92,32 +104,52 @@ Handles lists of different lengths."
     (mapcar (lambda (n)
 	      (time-add start-time (days-to-time n)))
 	    nums-repeated)))
-(scheduler-date-sequence (current-time)
-			 3
-			 20)
+
+(defun scheduler-day-of-week (time)
+  (->> time
+       (format-time-string "%u")
+       (string-to-number)))
+
+(-map 'scheduler-org-timestamp
+      (scheduler-date-sequence (current-time)
+			       3
+			       20))
 (mapcar 'scheduler-org-timestamp
 	(scheduler-date-sequence (current-time)
 				 3
 				 20))
 
+(defun scheduler-interleave (&rest lists)
+  "Interleave lists (like '-interleave') but don't stop when the shortest
+list is exhausted."
+  (when lists
+    (->> lists
+	 (-map 'length)
+	 (apply 'max)
+	 (1-)
+	 (number-sequence 0)
+	 (-map (lambda (index)
+		 (-map (lambda (list)
+			 (nth index list))
+		       lists)))
+	 (-flatten-n 1)
+	 (-non-nil))))
 
-;; Example usage
-(-> (scheduler-org-tasks 'scheduler-org-is-scheduled-todo)
-    (-interleave)
-    (-map (lambda (x)
-	    (org-element-property :title x))))
 
-(scheduler-org-tasks
- 'scheduler-org-is-scheduled-todo)
+;; All scheduled tasks
+(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
+	     (-remove 'seq-empty-p)
+	     (apply 'scheduler-interleave)
+	     (-map (apply-partially 'org-element-property :title))))
+(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
+	     (-remove 'seq-empty-p)
+	     (apply '-interleave)
+	     (-map (apply-partially 'org-element-property :title))))
+(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
+	 (-flatten-n 1)
+	 (-map (apply-partially 'org-element-property :title))))
 
-;; Before dash
-(let* ((project-tasks (scheduler-org-tasks
-		       'scheduler-org-is-scheduled-todo))
-       (interleaved-tasks (scheduler-interleave-lists project-tasks)))
-  (mapcar (lambda (e)
-	    (org-element-property :title e))
-	  interleaved-tasks))
-
+(-interleave '(1 1) '(2 2 2 2 2 2) '(3))
 
 ;; hashmap with `equal`
 (let* ((ct (current-time))
