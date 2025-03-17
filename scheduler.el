@@ -78,10 +78,10 @@ found an nil when all siblings have been exhausted without a match."
 	       "SCHEDULED"
 	       (scheduler-org-timestamp date)))
 
-(defun scheduler-date-sequence (start-time repeat size)
-  "Returns a list of time objects starting at start-time, repeating each
-`repeat` times before incrementing by 1 day and stopping once reaching
-`size`"
+(defun scheduler-date-sequence (start-time repeat size availability)
+  "Returns a list of time objects starting at `start-time', repeating each
+a `repeat' number of times before incrementing by 1 day and stopping
+once reaching `size' and only using days-of-week in `availability'."
   (let* ((even-len (/ size repeat))
 	 (nums (number-sequence 0 (1- even-len)))
 	 (leftover (- size (* repeat even-len)))
@@ -91,19 +91,23 @@ found an nil when all siblings have been exhausted without a match."
 						repeat))
 			 (apply #'append))))
     (->> (append even-list makeup)
-	 (-map #'days-to-time)
-	 (-map (apply-partially #'time-add start-time)))))
+	 (-map (apply-partially #'scheduler-time-add-on-availability
+				start-time
+				availability)))))
 
-(defun saved-date-sequence (start-time repeat size)
-  (let* ((nums (number-sequence 0
-				(1- (/ size repeat))))
-	 (nums-repeated (apply #'append
-			       (mapcar (lambda (n)
-					 (make-list repeat n))
-				       nums))))
-    (mapcar (lambda (n)
-	      (time-add start-time (days-to-time n)))
-	    nums-repeated)))
+(defun scheduler-time-add-on-availability (start-time availability days)
+  "Add `days' number of days to `start-time' according to `availability'.
+
+TODO: Make this not have a loop. There must be a way to do this in O(1)."
+  (let ((left days)
+	(cur-time start-time))
+    (while (> left 0)
+      (setq cur-time (time-add cur-time (days-to-time 1)))
+      (if (-contains? availability (scheduler-day-of-week cur-time))
+	  (setq left (1- left))))
+    cur-time))
+
+(scheduler-org-timestamp (scheduler-time-add-on-availability (current-time) '(1 2 3) 10))
 
 (defun scheduler-day-of-week (time)
   (->> time
