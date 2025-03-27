@@ -11,10 +11,67 @@ availability.
 
 For items that already have a schedule, honor that schedule.
 For items that has a deadline, schedule for 2 weeks before or today."
-  (let ((date-tasks (make-hash-table :test 'equal))
+  (let* ((date-tasks (make-hash-table :test 'equal))
 	(all-tasks (scheduler-all-tasks-ordered))
-	(dates-to-fill (scheduler-date-sequence (current-time)
-						scheduler-daily-capacity)))))
+	(scheduled-tasks (-filter #'org-get-scheduled-time all-tasks))
+	(unscheduled-tasks (-remove #'org-get-scheduled-time all-tasks)))
+    (-> (scheduler-dates-init)
+	(scheduler-commit-scheduled-tasks))
+    (scheduler-commit-scheduled-tasks (scheduler-dates-init) scheduled-tasks)))
+
+(defun scheduler-commit-scheduled-tasks (date-buckets scheduled-tasks)
+  "Takes tasks with a schedule and adds them to a hash of dates"
+  (-reduce-from (lambda (acc task)
+		  (scheduler-dates-put acc
+				       (org-get-scheduled-time
+					task)
+				       task))
+		date-buckets
+		scheduled-tasks))
+
+(scheduler-new-schedule)
+
+(defun scheduler-commit-scheduled-task (date-buckets date task)
+  "Takes and commits a task to the hash on date"
+  (scheduler-dates-put date-buckets date task))
+
+(scheduler-new-schedule)
+
+(defun scheduler-dates-init ()
+  "Returns the initial hash used to bucket tasks into dates"
+  '())
+
+(defun scheduler-dates-get (date dates)
+  "Returns the bucket of tasks for given `date'"
+  (assoc-default date dates #'equal nil))
+
+(defun scheduler-dates-put (date task dates)
+  "Returns adds `task' to the bucket of `date'. Returns the new dates
+object to be used for lookup later."
+  (cons (cons date
+	      (if-let (task-bucket (scheduler-dates-get dates
+							date))
+		  (cons task task-bucket)
+		(list task)))
+	dates))
+(let* ((d1 (current-time))
+       (d2 (time-add (days-to-time 1) d1)))
+  (->> (scheduler-dates-init)
+      (scheduler-dates-put d1 1)
+      (scheduler-dates-put d1 2)
+      (scheduler-dates-put d2 5)
+      (-map #'scheduler-date-pp)))
+
+(defun scheduler-dates-pp (dates)
+  "Returns a string representation of dates that's easy to read for debugging."
+  )
+
+(defun scheduler-date-pp (date-alist)
+  "Returns a string presentation of date-assoc that's easy to read for
+debugging."
+  (format "%s - %i"
+	  (scheduler-org-timestamp (car date-alist))
+	  (length (cdr date-alist))))
 
 (defun scheduler-all-tasks-ordered ()
   (->> (scheduler-org-tasks 'scheduler-org-is-todo)
@@ -78,6 +135,7 @@ found an nil when all siblings have been exhausted without a match."
 	       "SCHEDULED"
 	       (scheduler-org-timestamp date)))
 
+
 (defun scheduler-date-sequence (start-time repeat size availability)
   "Returns a list of time objects starting at `start-time', repeating each
 a `repeat' number of times before incrementing by 1 day and stopping
@@ -94,6 +152,22 @@ once reaching `size' and only using days-of-week in `availability'."
 	 (-map (apply-partially #'scheduler-time-add-on-availability
 				start-time
 				availability)))))
+
+(defun scheduler-next-available-day-after (availability day)
+  "Return the next day that's available according to `availability'."
+  (when availability
+    (let* ((next-day (time-add day (days-to-time 1)))
+	   (next-day-of-week (scheduler-day-of-week next-day)))
+      (if (-contains? availability next-day-of-week)
+	  next-day
+	(scheduler-next-available-day-after availability next-day)))))
+
+(let ((availability '(1 3 4))
+      (cur-time (time-add (days-to-time 0) (current-time))))
+  (list
+   availability
+   (scheduler-day-of-week cur-time)
+   (scheduler-org-timestamp (scheduler-next-available-day-after availability cur-time))))
 
 (defun scheduler-time-add-on-availability (start-time availability days)
   "Add `days' number of days to `start-time' according to `availability'.
