@@ -1,0 +1,16 @@
+* Normal handling
+1. Get all TODOs
+2. Add "scheduled" to their buckets
+3. Get all unscheduled and add them to buckets
+4. Rebalance
+5. Make assignments (add scheduling)
+* Fresh scheduling
+For when there is no manual scheduling provided.
+* TODO Work days
+Which days (of the week) are you available to actually do the work?
+* TODO Existing scheduling
+If there are any tasks that already have a scheduling.
+* TODO Rebalance
+Don't add any new scheduling, just update the existing schedules to comply with daily capacity.
+* TODO Refresh
+Remove all scheduling (to start fresh again)
