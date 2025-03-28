@@ -29,13 +29,9 @@ For items that has a deadline, schedule for 2 weeks before or today."
 		date-buckets
 		scheduled-tasks))
 
-(scheduler-new-schedule)
-
 (defun scheduler-commit-scheduled-task (date-buckets date task)
   "Takes and commits a task to the hash on date"
   (scheduler-dates-put date-buckets date task))
-
-(scheduler-new-schedule)
 
 (defun scheduler-dates-init ()
   "Returns the initial hash used to bucket tasks into dates"
@@ -49,18 +45,20 @@ For items that has a deadline, schedule for 2 weeks before or today."
   "Returns adds `task' to the bucket of `date'. Returns the new dates
 object to be used for lookup later."
   (cons (cons date
-	      (if-let (task-bucket (scheduler-dates-get dates
-							date))
+	      (if-let (task-bucket (scheduler-dates-get date
+							dates))
 		  (cons task task-bucket)
 		(list task)))
 	dates))
+
 (let* ((d1 (current-time))
-       (d2 (time-add (days-to-time 1) d1)))
+       (d2 (time-add (days-to-time 1) d1))
+       (tasks (scheduler-all-tasks-ordered)))
   (->> (scheduler-dates-init)
-      (scheduler-dates-put d1 1)
-      (scheduler-dates-put d1 2)
-      (scheduler-dates-put d2 5)
-      (-map #'scheduler-date-pp)))
+       (scheduler-dates-put d1 (nth 1 tasks))
+       (scheduler-dates-put d1 (nth 2 tasks))
+       (scheduler-dates-put d2 (nth 3 tasks))
+       (-map #'scheduler-date-pp)))
 
 (defun scheduler-dates-pp (dates)
   "Returns a string representation of dates that's easy to read for debugging."
@@ -69,9 +67,13 @@ object to be used for lookup later."
 (defun scheduler-date-pp (date-alist)
   "Returns a string presentation of date-assoc that's easy to read for
 debugging."
-  (format "%s - %i"
+  (format "%s - %s"
 	  (scheduler-org-timestamp (car date-alist))
-	  (length (cdr date-alist))))
+	  (-map #'scheduler-org-title 
+		(cdr date-alist))))
+
+(defun scheduler-org-title (task)
+  (org-element-property :title task))
 
 (defun scheduler-all-tasks-ordered ()
   (->> (scheduler-org-tasks 'scheduler-org-is-todo)
@@ -212,26 +214,3 @@ list is exhausted."
 		       lists)))
 	 (-flatten-n 1)
 	 (-non-nil))))
-
-
-;; All scheduled tasks
-(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
-	     (-remove 'seq-empty-p)
-	     (apply 'scheduler-interleave)
-	     (-map (apply-partially 'org-element-property :title))))
-(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
-	     (-remove 'seq-empty-p)
-	     (apply '-interleave)
-	     (-map (apply-partially 'org-element-property :title))))
-(length (->> (scheduler-org-tasks 'scheduler-org-is-todo)
-	 (-flatten-n 1)
-	 (-map (apply-partially 'org-element-property :title))))
-
-(-interleave '(1 1) '(2 2 2 2 2 2) '(3))
-
-;; hashmap with `equal`
-(let* ((ct (current-time))
-       (tomorrow (time-add ct (days-to-time 1)))
-       (tomorrow-again (time-add ct (days-to-time 1))))
-  (equal tomorrow tomorrow-again))
-(equal (current-time) (current-time))
